@@ -388,10 +388,25 @@ public partial class MainWindow : Window
         if (drive is null) { LastImageText.Text = ""; return; }
         try
         {
-            var folder = new DirectoryInfo(Path.Combine(drive.Root, "WindowsImageBackup", Environment.MachineName));
-            LastImageText.Text = folder.Exists
-                ? $"Image on this drive last written {folder.LastWriteTime:d MMM yyyy HH:mm}."
-                : "No system image of this PC on this drive yet.";
+            var store = new DirectoryInfo(Path.Combine(drive.Root, "WindowsImageBackup"));
+            if (!store.Exists) { LastImageText.Text = "No system image on this drive yet."; return; }
+            if (_config.LastImageWhen is DateTime when && _config.LastImageSerial is string serial && serial == drive.Serial)
+            {
+                LastImageText.Text = $"System image of this PC last written {when:d MMM yyyy HH:mm}.";
+                return;
+            }
+            // Windows normally lets only administrators look inside the image folder.
+            try
+            {
+                var mine = store.GetDirectories().FirstOrDefault(d => d.Name.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase));
+                LastImageText.Text = mine is not null
+                    ? $"Image of this PC on this drive, last written {mine.LastWriteTime:d MMM yyyy HH:mm}."
+                    : "This drive holds a system image of another PC, none of this one yet.";
+            }
+            catch (UnauthorizedAccessException)
+            {
+                LastImageText.Text = "This drive holds a system image. Windows shows its details only to administrators.";
+            }
         }
         catch (Exception) { LastImageText.Text = ""; }
     }
@@ -447,6 +462,9 @@ public partial class MainWindow : Window
             switch (result.Outcome)
             {
                 case SystemImageOutcome.Succeeded:
+                    _config.LastImageWhen = DateTime.Now;
+                    _config.LastImageSerial = drive.Serial;
+                    _config.Save();
                     Done("System image finished.");
                     break;
                 case SystemImageOutcome.ElevationDeclined:

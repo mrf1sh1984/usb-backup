@@ -71,6 +71,18 @@ public sealed class ScheduleTests
         Assert.Equal(ok, AppConfig.TryParseTime(text, out _));
     }
 
+    // Lines taken from a real wbadmin run on 14 Nov 2026.
+    [Theory]
+    [InlineData("Creating a backup of volume (C:), copied (99%).", 99)]
+    [InlineData("Creating a backup of volume (EFI System Partition) (100.00 MB), copied (0%).", 0)]
+    [InlineData("Creating a backup of volume  (847.00 MB), copied (62%).", 62)]
+    [InlineData("The backup of volume (C:) completed successfully.", null)]
+    [InlineData("Creating a shadow copy of the volumes specified for backup...", null)]
+    public void Image_progress_lines(string line, int? percent)
+    {
+        Assert.Equal(percent, SystemImage.ParsePercent(line));
+    }
+
     [Fact]
     public void Unreadable_time_is_never_due()
     {

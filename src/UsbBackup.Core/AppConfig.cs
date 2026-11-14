@@ -80,6 +80,13 @@ public sealed class AppConfig
     public bool ScheduledBackupDue(DateTime? lastVersion, DateTime now) =>
         LastScheduledSlot(now) is DateTime slot && (lastVersion is null || lastVersion.Value < slot);
 
+    /// <summary>
+    /// When this app last finished a system image, and on which drive. Windows only lets
+    /// administrators look inside WindowsImageBackup, so the app cannot read this off the drive.
+    /// </summary>
+    public DateTime? LastImageWhen { get; set; }
+    public string? LastImageSerial { get; set; }
+
     /// <summary>Whether the app has any reason to keep running in the notification area.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool AnyAutomatic => AutoBackupOnPlugIn || DailyBackup;
