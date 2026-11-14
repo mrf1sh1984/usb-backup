@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _arrivalTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _pollTimer = new() { Interval = TimeSpan.FromSeconds(60) };
     private bool _destinationSeen;
+    private DateTime? _slotHandled; // the daily slot already dealt with, so a failed run is not retried every minute
     private bool _exiting;
     private bool _toldAboutTray;
     private (string Message, bool Warn) _lastOutcome;
@@ -47,7 +48,7 @@ public partial class MainWindow : Window
         _destinationSeen = !background && DestinationPresent();
         _arrivalTimer.Tick += (_, _) => { _arrivalTimer.Stop(); CheckDestination(); };
         _pollTimer.Tick += (_, _) => CheckDestination();
-        _pollTimer.IsEnabled = _config.AutoBackupOnPlugIn;
+        _pollTimer.IsEnabled = _config.AnyAutomatic;
         if (background) _arrivalTimer.Start();
     }
 
@@ -103,18 +104,37 @@ public partial class MainWindow : Window
     private async void CheckDestination()
     {
         if (_busy) return; // look again on the next tick
-        if (!DestinationPresent()) { _destinationSeen = false; return; }
-        if (_destinationSeen) return;
+        // A drive that goes away and comes back gets a fresh try at a daily backup that failed.
+        if (!DestinationPresent()) { _destinationSeen = false; _slotHandled = null; return; }
+        var arrived = !_destinationSeen;
         _destinationSeen = true;
 
-        RefreshDrives();
-        if (!_config.AutoBackupOnPlugIn || SelectedDrive is not DriveItem drive) return;
+        var now = DateTime.Now;
+        // Each daily slot is looked at once: either it is already covered, or one run is attempted.
+        var slot = _config.LastScheduledSlot(now);
+        var checkSchedule = slot is not null && slot != _slotHandled;
+        if (!arrived && !checkSchedule) return;
+
+        if (arrived) RefreshDrives();
+        if (!_config.AnyAutomatic || SelectedDrive is not DriveItem drive) return;
 
         DateTime? last = null;
         try { last = SnapshotEngine.List(SnapshotEngine.JobRoot(drive.Root, FoldersJob)).FirstOrDefault()?.When; }
         catch (Exception ex) { Log("Could not read versions: " + ex.Message); }
 
-        if (!_config.AutoBackupDue(last, DateTime.Now))
+        if (checkSchedule)
+        {
+            _slotHandled = slot;
+            if (_config.ScheduledBackupDue(last, now))
+            {
+                Log($"Daily backup ({_config.DailyBackupTime}) is due — starting.");
+                await RunFoldersBackup(automatic: true);
+                return;
+            }
+        }
+        if (!arrived || !_config.AutoBackupOnPlugIn) return;
+
+        if (!_config.AutoBackupDue(last, now))
         {
             Log($"Backup drive connected. Last backup was {last:d MMM HH:mm}, less than {_config.AutoMinHours} hour(s) ago, so no automatic backup.");
             return;
@@ -605,6 +625,8 @@ public partial class MainWindow : Window
         VerifyBox.IsChecked = _config.VerifyCopies;
         AutoBox.IsChecked = _config.AutoBackupOnPlugIn;
         AutoHoursBox.Text = _config.AutoMinHours.ToString();
+        DailyBox.IsChecked = _config.DailyBackup;
+        DailyTimeBox.Text = _config.DailyBackupTime;
         try { StartupBox.IsChecked = StartupEntry.IsEnabled; } catch (Exception) { StartupBox.IsChecked = false; }
     }
 
@@ -622,6 +644,17 @@ public partial class MainWindow : Window
                 return;
             }
         }
+        if (!AppConfig.TryParseTime(DailyTimeBox.Text, out var dailyTime))
+        {
+            SettingsSaved.Text = "";
+            MessageBox.Show(this, "The daily backup time must be a 24-hour time such as 13:00.", "Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
+            DailyTimeBox.Focus();
+            return;
+        }
+        _config.DailyBackup = DailyBox.IsChecked == true;
+        _config.DailyBackupTime = dailyTime.ToString("HH:mm");
+        DailyTimeBox.Text = _config.DailyBackupTime;
+        _slotHandled = null; // a changed schedule is looked at afresh
         _config.Retention = new RetentionPolicy { KeepLast = values[0], KeepDaily = values[1], KeepWeekly = values[2], KeepMonthly = values[3] };
         _config.Excludes = ExcludesBox.Text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
         _config.RequireBitLocker = RequireBitLockerBox.IsChecked == true;
@@ -630,14 +663,14 @@ public partial class MainWindow : Window
         _config.AutoBackupOnPlugIn = AutoBox.IsChecked == true;
         _config.AutoMinHours = values[4];
         _config.Save();
-        _pollTimer.IsEnabled = _config.AutoBackupOnPlugIn;
+        _pollTimer.IsEnabled = _config.AnyAutomatic;
 
         var note = "";
         try
         {
             var wanted = StartupBox.IsChecked == true;
             if (wanted != StartupEntry.IsEnabled) StartupEntry.Set(wanted);
-            if (_config.AutoBackupOnPlugIn && !wanted)
+            if (_config.AnyAutomatic && !wanted)
                 note = "  Automatic backup only works while the app is running — consider starting it at sign-in.";
         }
         catch (Exception ex) { note = "  Could not change the sign-in setting: " + ex.Message; }
@@ -690,14 +723,14 @@ public partial class MainWindow : Window
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         // With automatic backup on, the close button only hides the window; Exit is on the icon's menu.
-        if (!_exiting && _config.AutoBackupOnPlugIn)
+        if (!_exiting && _config.AnyAutomatic)
         {
             e.Cancel = true;
             Hide();
             if (!_toldAboutTray)
             {
                 _toldAboutTray = true;
-                Notify("USB Backup is still running", "It will back up when the drive is plugged in. Right-click this icon to exit.");
+                Notify("USB Backup is still running", "It stays here so automatic backups can run. Right-click this icon to exit.");
             }
             return;
         }

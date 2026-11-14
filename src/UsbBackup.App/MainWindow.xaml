@@ -195,9 +195,16 @@
                                 <TextBox x:Name="AutoHoursBox" Width="50" Margin="8,0" Padding="4,3"/>
                                 <TextBlock Text="hours old" VerticalAlignment="Center"/>
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,3">
+                                <CheckBox x:Name="DailyBox" Content="Also back up my folders every day at" VerticalAlignment="Center"/>
+                                <TextBox x:Name="DailyTimeBox" Width="60" Margin="8,0" Padding="4,3"/>
+                                <TextBlock Text="(24-hour, e.g. 13:00)" VerticalAlignment="Center" Foreground="#6B7280"/>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource Hint}" Margin="20,0,0,3"
+                                       Text="If the drive is away or locked at that time, the backup runs when it is next connected."/>
                             <CheckBox x:Name="StartupBox" Content="Start USB Backup when I sign in to Windows (in the notification area)" Margin="0,3"/>
                             <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,0"
-                                       Text="The app has to be running to notice the drive. While automatic backup is on, closing the window keeps it running in the notification area; right-click its icon to exit. A system image is never started automatically."/>
+                                       Text="The app has to be running for either of these. While one is on, closing the window keeps it running in the notification area; right-click its icon to exit. Files another program has open are skipped, so pick a time when the PC is on but idle. A system image is never started automatically."/>
 
                             <TextBlock Style="{StaticResource H}" Text="Leave out" Margin="0,18,0,4"/>
                             <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,6"

@@ -20,7 +20,8 @@ A small Windows desktop app that backs a PC up to a USB drive.
 - **BitLocker check** — refuses to write unless the destination drive reports BitLocker on
   (can be switched off in Settings).
 - **Automatic backup** — optionally runs the folders job when the backup drive is plugged in or
-  unlocked, from a notification-area icon, and can start at sign-in.
+  unlocked, and/or once a day at a set time (a run missed because the drive was away happens
+  when it is next connected). Runs from a notification-area icon and can start at sign-in.
 
 ## Layout
 
